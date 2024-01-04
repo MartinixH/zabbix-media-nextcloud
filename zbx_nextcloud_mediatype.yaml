@@ -1,0 +1,118 @@
+zabbix_export:
+  version: '6.4'
+  media_types:
+    - name: Nextcloud
+      type: WEBHOOK
+      parameters:
+        - name: message
+          value: '{ALERT.MESSAGE}'
+        - name: password
+          value: '< enter password >'
+        - name: sendto
+          value: '{ALERT.SENDTO}'
+        - name: serverurl
+          value: '< https://your.nextcloud.com >'
+        - name: user
+          value: '< zabbix user in nextcloud >'
+      script: |
+        try {
+                
+                    var params = JSON.parse(value),
+                        req = new HttpRequest(),
+                        body = {},
+                        resp = '';
+                    
+                    var AuthString = btoa(params.user+':'+params.password);
+        
+                    req.addHeader('Content-Type: application/json');
+                    req.addHeader('Authorization: Basic '+AuthString);
+                    req.addHeader('Accept: application/json, text/plain, */*');
+                    req.addHeader('OCS-APIRequest: true');
+        
+                    body.token = params.sendto;
+                    body.message = '';
+                    body.message += params.message;
+        
+                    var url = params.serverurl + '/ocs/v2.php/apps/spreed/api/v1/chat/' + params.sendto;
+        
+        
+                    Zabbix.log(4, '[Nextcloud Webhook] Sending request:' + JSON.stringify(body));
+                    resp = req.post(url,
+                        JSON.stringify(body)
+                    );
+                    Zabbix.log(4, '[Nextcloud Webhook] Receiving response:' + resp);
+                
+                    try {
+                        resp = JSON.parse(resp);
+                    }
+                    catch (error) {
+                        throw 'incorrect response. Nextcloud returned a non-JSON object.';
+                    }
+        
+                    if (resp['ocs']['meta']['statuscode'] != 201) {
+                        throw resp['ocs']['meta']['message'];
+                    }
+                
+                    if (resp['ocs']['meta']['message'] != 'OK') {
+                        throw 'Unknown error.';
+                    }
+                
+                    return 'OK';
+                }
+                catch (error) {
+                    Zabbix.log(3, '[Nextcloud Webhook] Notification failed : ' + error);
+                    throw 'Nextcloud notification failed : ' + error;
+                }
+      message_templates:
+        - event_source: TRIGGERS
+          operation_mode: PROBLEM
+          subject: 'Problem: {EVENT.NAME}'
+          message: |
+            Problem started at {EVENT.TIME} on {EVENT.DATE}
+            Problem name: {EVENT.NAME}
+            Host: {HOST.NAME}
+            Severity: {EVENT.SEVERITY}
+            Operational data: {EVENT.OPDATA}
+            Original problem ID: {EVENT.ID}
+            {TRIGGER.URL}
+        - event_source: TRIGGERS
+          operation_mode: RECOVERY
+          subject: 'Resolved in {EVENT.DURATION}: {EVENT.NAME}'
+          message: |
+            Problem has been resolved at {EVENT.RECOVERY.TIME} on {EVENT.RECOVERY.DATE}
+            Problem name: {EVENT.NAME}
+            Problem duration: {EVENT.DURATION}
+            Host: {HOST.NAME}
+            Severity: {EVENT.SEVERITY}
+            Original problem ID: {EVENT.ID}
+            {TRIGGER.URL}
+        - event_source: TRIGGERS
+          operation_mode: UPDATE
+          subject: 'Updated problem in {EVENT.AGE}: {EVENT.NAME}'
+          message: |
+            {USER.FULLNAME} {EVENT.UPDATE.ACTION} problem at {EVENT.UPDATE.DATE} {EVENT.UPDATE.TIME}.
+            {EVENT.UPDATE.MESSAGE}
+            
+            Current problem status is {EVENT.STATUS}, age is {EVENT.AGE}, acknowledged: {EVENT.ACK.STATUS}.
+        - event_source: DISCOVERY
+          operation_mode: PROBLEM
+          subject: 'Discovery: {DISCOVERY.DEVICE.STATUS} {DISCOVERY.DEVICE.IPADDRESS}'
+          message: |
+            Discovery rule: {DISCOVERY.RULE.NAME}
+            
+            Device IP: {DISCOVERY.DEVICE.IPADDRESS}
+            Device DNS: {DISCOVERY.DEVICE.DNS}
+            Device status: {DISCOVERY.DEVICE.STATUS}
+            Device uptime: {DISCOVERY.DEVICE.UPTIME}
+            
+            Device service name: {DISCOVERY.SERVICE.NAME}
+            Device service port: {DISCOVERY.SERVICE.PORT}
+            Device service status: {DISCOVERY.SERVICE.STATUS}
+            Device service uptime: {DISCOVERY.SERVICE.UPTIME}
+        - event_source: AUTOREGISTRATION
+          operation_mode: PROBLEM
+          subject: 'Autoregistration: {HOST.HOST}'
+          message: |
+            Host name: {HOST.HOST}
+            Host IP: {HOST.IP}
+            Agent port: {HOST.PORT}
